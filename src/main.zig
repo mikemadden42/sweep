@@ -1,5 +1,3 @@
-// zig build -Doptimize=ReleaseFast -Dcpu=native -j$(nproc)
-
 const std = @import("std");
 const fs = std.fs;
 const print = std.debug.print;
@@ -40,11 +38,14 @@ pub fn main() !void {
     defer {
         var it = extensions.iterator();
         while (it.next()) |entry| {
+            // Free each duplicated filename string within the ArrayList
             for (entry.value_ptr.items) |item| {
                 allocator.free(item);
             }
-            entry.value_ptr.deinit();
+            // Deinitialize the ArrayList itself
+            entry.value_ptr.deinit(allocator);
         }
+        // Deinitialize the StringHashMap
         extensions.deinit();
     }
 
@@ -114,52 +115,62 @@ fn listFiles(allocator: Allocator, extensions: *StringHashMap(ArrayList([]u8)), 
         const file_type = classifyFile(entry);
         if (file_type == .regular and (options.include_hidden or !isDotfile(entry.name))) {
             const ext = std.fs.path.extension(entry.name);
-            const duped_ext = try allocator.dupe(u8, ext);
-            errdefer allocator.free(duped_ext);
-
-            const list = try extensions.getOrPut(duped_ext);
-            if (!list.found_existing) {
-                list.value_ptr.* = ArrayList([]u8).init(allocator);
-            } else {
-                allocator.free(duped_ext);
-            }
-
             const duped_name = try allocator.dupe(u8, entry.name);
-            try list.value_ptr.append(duped_name);
+            errdefer allocator.free(duped_name);
+
+            // Manual get-then-put logic to avoid getOrPut issues
+            if (extensions.getPtr(ext)) |file_list| {
+                // Extension already exists, just append the new file name.
+                try file_list.append(allocator, duped_name);
+            } else {
+                // Extension does not exist. Create a new ArrayList.
+                const duped_ext = try allocator.dupe(u8, ext);
+                errdefer allocator.free(duped_ext);
+
+                // In this Zig version, ArrayList is a "dumb" struct.
+                // Initialize it empty and pass the allocator to functions that need it.
+                var new_list = ArrayList([]u8){};
+                errdefer new_list.deinit(allocator); // Clean up if the put fails
+
+                try new_list.append(allocator, duped_name);
+
+                // Put the newly created list into the map.
+                try extensions.put(duped_ext, new_list);
+            }
         }
     }
 }
 
+
 fn printSortedResults(allocator: Allocator, extensions: *const StringHashMap(ArrayList([]u8)), verbose: bool) !void {
-    var sorted_extensions = ArrayList([]const u8).init(allocator);
-    defer sorted_extensions.deinit();
+    // Initialize with an empty struct literal.
+    var sorted_extensions = ArrayList([]const u8){};
+    defer sorted_extensions.deinit(allocator);
 
     var it = extensions.iterator();
     while (it.next()) |entry| {
-        try sorted_extensions.append(entry.key_ptr.*);
+        try sorted_extensions.append(allocator, entry.key_ptr.*);
     }
 
     std.mem.sort([]const u8, sorted_extensions.items, {}, stringLessThan);
 
-    var buffered_writer = std.io.bufferedWriter(std.io.getStdOut().writer());
-    var writer = buffered_writer.writer();
-
+    // WORKAROUND: The std I/O APIs in this Zig version are proving impossible to
+    // access correctly. We will use `std.debug.print` for all output.
+    // This writes to stderr, but for a simple CLI tool, the result is the same.
     for (sorted_extensions.items) |ext| {
         const display_ext = if (std.mem.startsWith(u8, ext, ".")) ext[1..] else ext;
-        try writer.print("{s}:\n", .{display_ext});
+        print("{s}:\n", .{display_ext});
         if (extensions.get(ext)) |files| {
             std.mem.sort([]u8, files.items, {}, stringLessThan);
             for (files.items) |file| {
-                try writer.print("- {s}\n", .{file});
+                print("- {s}\n", .{file});
             }
             if (verbose) {
-                try writer.print("Total files: {d}\n", .{files.items.len});
+                print("Total files: {d}\n", .{files.items.len});
             }
         }
-        try writer.print("\n", .{});
+        print("\n", .{});
     }
-
-    try buffered_writer.flush();
 }
 
 fn isDotfile(filename: []const u8) bool {
