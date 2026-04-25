@@ -1,25 +1,23 @@
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const io = init.io;
 
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var buf: [4096]u8 = undefined;
+    var stdout = std.Io.File.stdout().writer(io, &buf);
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = init.minimal.args.iterate();
     _ = args.skip();
     const dir_path = args.next() orelse ".";
 
-    // StringHashMap still uses .init(allocator) in this version
     var extensions = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
 
-    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
+    defer dir.close(io);
     var iterator = dir.iterate();
 
-    while (try iterator.next()) |entry| {
+    while (try iterator.next(io)) |entry| {
         if (entry.kind == .file and !std.mem.startsWith(u8, entry.name, ".")) {
             const ext = std.fs.path.extension(entry.name);
 
@@ -28,24 +26,21 @@ pub fn main() !void {
 
             const gop = try extensions.getOrPut(duped_ext);
             if (!gop.found_existing) {
-                // FIXED: Initialize as an empty struct literal
-                gop.value_ptr.* = std.ArrayList([]const u8){};
+                gop.value_ptr.* = .empty;
             }
-            // FIXED: Pass the allocator directly into the append call
             try gop.value_ptr.append(allocator, duped_name);
         }
     }
 
     if (extensions.count() == 0) {
-        std.debug.print("No files found.\n", .{});
+        try stdout.interface.print("No files found.\n", .{});
+        try stdout.interface.flush();
         return;
     }
 
-    // FIXED: Initialize as an empty struct literal
-    var sorted_keys = std.ArrayList([]const u8){};
+    var sorted_keys: std.ArrayList([]const u8) = .empty;
     var key_it = extensions.keyIterator();
     while (key_it.next()) |key| {
-        // FIXED: Pass the allocator directly into the append call
         try sorted_keys.append(allocator, key.*);
     }
 
@@ -53,16 +48,18 @@ pub fn main() !void {
 
     for (sorted_keys.items) |ext| {
         const display_ext = if (ext.len > 0 and ext[0] == '.') ext[1..] else ext;
-        std.debug.print("{s}:\n", .{if (display_ext.len == 0) "No Extension" else display_ext});
+        try stdout.interface.print("{s}:\n", .{if (display_ext.len == 0) "No Extension" else display_ext});
 
         const files = extensions.get(ext).?;
         std.mem.sort([]const u8, files.items, {}, stringLessThan);
 
         for (files.items) |file| {
-            std.debug.print("- {s}\n", .{file});
+            try stdout.interface.print("- {s}\n", .{file});
         }
-        std.debug.print("\n", .{});
+        try stdout.interface.print("\n", .{});
     }
+
+    try stdout.interface.flush();
 }
 
 fn stringLessThan(context: void, a: []const u8, b: []const u8) bool {
