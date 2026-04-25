@@ -80,8 +80,8 @@ pub fn build(b: *std.Build) void {
                 // importing modules from different packages).
                 .{ .name = "sweep", .module = mod },
             },
+            .strip = optimize != .Debug,
         }),
-        .strip = optimize != .Debug,
     });
 
     // This declares intent for the executable to be installed into the
