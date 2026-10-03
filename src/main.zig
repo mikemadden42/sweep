@@ -7,7 +7,7 @@ pub fn main(init: std.process.Init) !void {
     var buf: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writer(io, &buf);
 
-    var args = init.minimal.args.iterate();
+    var args = try init.minimal.args.iterateAllocator(allocator);
     _ = args.skip();
     const dir_path = args.next() orelse ".";
 
