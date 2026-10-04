@@ -13,6 +13,10 @@ sweep [options] [directory]   # defaults to current directory if omitted
 
 Exits with status 1 if the directory can't be read and 2 for invalid arguments.
 
+## Requirements
+
+Zig 0.17.0 or later. The build uses `std.process.Init` and `std.Io` APIs that are not available in earlier releases.
+
 ## CI
 
 ```sh
@@ -24,6 +28,7 @@ zig build test --release=safe  # tests with safety checks
 zig build --release=safe       # release build with safety checks
 zig build --release=fast       # release build
 zig build --release=small      # size-optimized build
+zig build --release=safe -Dstrip=false  # release build that keeps debug symbols
 ```
 
 ## Cross Compilation

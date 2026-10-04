@@ -16,9 +16,9 @@
 
 ## Maintenance
 - [x] **Ghost Dependency**: Either use the `@import("sweep")` in `main.zig` after refactoring or remove the unused module import from `build.zig`.
-- [ ] **Don't Strip Test Binaries**: `.strip` is set on the exe's root module, which `exe_tests` reuses, so `zig build test --release=safe` prints no stack trace on panic. Apply strip only to the exe artifact.
-- [ ] **Respect Optimize in Library Tests**: The `sweep` module in `build.zig` has no `.optimize`, so `mod_tests` always builds in debug regardless of `--release=*`.
-- [ ] **Strip Build Option**: Add a `-Dstrip` option (defaulting to `optimize != .debug`) so release builds, especially ReleaseSafe, can keep symbols for stack traces and profiling.
-- [ ] **Document Zig Version**: `minimum_zig_version` is advisory and not enforced; state the required Zig version (0.17.0) in the README.
-- [ ] **Include LICENSE in Package**: Uncomment `"LICENSE"` in `.paths` in `build.zig.zon` so the MIT notice ships when the package is fetched.
+- [x] **Don't Strip Test Binaries**: `.strip` is set on the exe's root module, which `exe_tests` reuses, so `zig build test --release=safe` prints no stack trace on panic. Apply strip only to the exe artifact.
+- [x] **Respect Optimize in Library Tests**: The `sweep` module in `build.zig` has no `.optimize`, so `mod_tests` always builds in debug regardless of `--release=*`.
+- [x] **Strip Build Option**: Add a `-Dstrip` option (defaulting to `optimize != .debug`) so release builds, especially ReleaseSafe, can keep symbols for stack traces and profiling.
+- [x] **Document Zig Version**: `minimum_zig_version` is advisory and not enforced; state the required Zig version (0.17.0) in the README.
+- [x] **Include LICENSE in Package**: Uncomment `"LICENSE"` in `.paths` in `build.zig.zon` so the MIT notice ships when the package is fetched.
 - [ ] **Stable Zig Support**: Monitor the evolution of the experimental `std.process.Init` and `std.Io` APIs to ensure compatibility with future Zig releases.

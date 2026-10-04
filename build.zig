@@ -21,6 +21,11 @@ pub fn build(b: *std.Build) void {
     // of this build script using `b.option()`. All defined flags (including
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
+    const strip = b.option(
+        bool,
+        "strip",
+        "Strip debug info from the executable (default: true unless optimize is Debug)",
+    ) orelse (optimize != .debug);
 
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
@@ -40,6 +45,7 @@ pub fn build(b: *std.Build) void {
         // Later on we'll use this module as the root module of a test executable
         // which requires us to specify a target.
         .target = target,
+        .optimize = optimize,
     });
 
     // Here we define an executable. An executable needs to have a root module
@@ -81,7 +87,7 @@ pub fn build(b: *std.Build) void {
                 // importing modules from different packages).
                 .{ .name = "sweep", .module = mod },
             },
-            .strip = optimize != .debug,
+            .strip = strip,
         }),
     });
 
@@ -132,10 +138,20 @@ pub fn build(b: *std.Build) void {
 
     // Creates an executable that will run `test` blocks from the executable's
     // root module. Note that test executables only test one module at a time,
-    // hence why we have to create two separate ones.
+    // hence why we have to create two separate ones. This uses its own module
+    // rather than `exe.root_module` so the tests are never stripped and can
+    // print stack traces.
     const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "sweep", .module = mod },
+            },
+        }),
     });
+    exe_tests.root_module.addOptions("build_options", options);
 
     // A run step that will run the second test executable.
     const run_exe_tests = b.addRunArtifact(exe_tests);
