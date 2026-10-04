@@ -19,6 +19,8 @@ Zig 0.17.0 or later. The build uses `std.process.Init` and `std.Io` APIs that ar
 
 ## CI
 
+GitHub Actions (`.github/workflows/ci.yml`) checks formatting, builds, and runs the tests in debug and ReleaseSafe on Linux, macOS and Windows for every push to `main` and every pull request. A separate job builds and tests against Zig nightly; it is allowed to fail and never blocks a merge.
+
 ```sh
 zig fmt --check src/main.zig   # formatting
 zig fmt --check .              # formatting (entire project)
