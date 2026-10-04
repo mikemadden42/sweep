@@ -8,15 +8,21 @@ pub const Group = struct {
     files: []const []const u8,
 };
 
-/// Groups the regular, non-hidden files in `dir` by extension.
+pub const Options = struct {
+    /// Include files whose names start with ".".
+    include_hidden: bool = false,
+};
+
+/// Groups the regular files in `dir` by extension.
 /// Groups are sorted by extension and each group's files are sorted by name.
 /// All returned memory is owned by `allocator`; an arena is the intended use.
-pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir) ![]Group {
+pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, options: Options) ![]Group {
     var extensions = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
 
     var iterator = dir.iterate();
     while (try iterator.next(io)) |entry| {
-        if (!std.mem.startsWith(u8, entry.name, ".") and isFile(io, dir, entry)) {
+        const hidden = std.mem.startsWith(u8, entry.name, ".");
+        if ((options.include_hidden or !hidden) and isFile(io, dir, entry)) {
             const ext = std.fs.path.extension(entry.name);
 
             const duped_ext = try allocator.dupe(u8, ext);
@@ -91,7 +97,7 @@ test "empty directory yields no groups" {
     var tmp = testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try testing.expectEqual(0, groups.len);
 }
 
@@ -103,7 +109,7 @@ test "groups files by extension, sorting groups and files" {
 
     try createFiles(tmp.dir, &.{ "zeta.md", "b.zig", "Makefile", "alpha.md", "a.zig", "LICENSE" });
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = "", .files = &.{ "LICENSE", "Makefile" } },
         .{ .ext = ".md", .files = &.{ "alpha.md", "zeta.md" } },
@@ -119,7 +125,7 @@ test "uses only the last extension" {
 
     try createFiles(tmp.dir, &.{ "archive.tar.gz", "photo.gz" });
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".gz", .files = &.{ "archive.tar.gz", "photo.gz" } },
     }, groups);
@@ -133,7 +139,7 @@ test "extensions are case-sensitive" {
 
     try createFiles(tmp.dir, &.{ "a.txt", "b.TXT" });
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".TXT", .files = &.{"b.TXT"} },
         .{ .ext = ".txt", .files = &.{"a.txt"} },
@@ -148,9 +154,25 @@ test "skips hidden files" {
 
     try createFiles(tmp.dir, &.{ ".gitignore", ".hidden.txt", "shown.txt" });
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".txt", .files = &.{"shown.txt"} },
+    }, groups);
+}
+
+test "includes hidden files when asked" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try tmp.dir.createDirPath(testing.io, ".git");
+    try createFiles(tmp.dir, &.{ ".gitignore", ".hidden.txt", "shown.txt" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{ .include_hidden = true });
+    try expectGroups(&.{
+        .{ .ext = "", .files = &.{".gitignore"} },
+        .{ .ext = ".txt", .files = &.{ ".hidden.txt", "shown.txt" } },
     }, groups);
 }
 
@@ -164,7 +186,7 @@ test "skips directories" {
     try tmp.dir.createDirPath(testing.io, "conf.d");
     try createFiles(tmp.dir, &.{ "subdir/nested.txt", "top.txt" });
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".txt", .files = &.{"top.txt"} },
     }, groups);
@@ -181,7 +203,7 @@ test "includes symlinks to files" {
     try tmp.dir.symLink(testing.io, "real.txt", "link.txt", .{});
     try tmp.dir.symLink(testing.io, "link.txt", "chained.txt", .{});
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".txt", .files = &.{ "chained.txt", "link.txt", "real.txt" } },
     }, groups);
@@ -201,7 +223,7 @@ test "skips symlinks to directories and broken or looping symlinks" {
     try tmp.dir.symLink(testing.io, "loop_a.txt", "loop_b.txt", .{});
     try createFiles(tmp.dir, &.{"real.txt"});
 
-    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".txt", .files = &.{"real.txt"} },
     }, groups);

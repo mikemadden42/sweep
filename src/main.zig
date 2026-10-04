@@ -9,6 +9,7 @@ const usage =
     \\The directory defaults to the current one.
     \\
     \\Options:
+    \\  -a, --all      Include hidden files (names starting with ".")
     \\  -h, --help     Show this help and exit
     \\  -V, --version  Show the version and exit
     \\
@@ -26,8 +27,8 @@ pub fn main(init: std.process.Init) !void {
     _ = arg_it.skip();
     while (arg_it.next()) |arg| try args.append(allocator, arg);
 
-    const dir_path = switch (parseArgs(args.items)) {
-        .run => |path| path,
+    const run = switch (parseArgs(args.items)) {
+        .run => |run| run,
         .help => {
             try stdout.interface.writeAll(usage);
             try stdout.interface.flush();
@@ -42,11 +43,12 @@ pub fn main(init: std.process.Init) !void {
         .unexpected_argument => |arg| usageError(io, "unexpected argument '{s}'", .{arg}),
     };
 
+    const dir_path = run.dir_path;
     var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err|
         fatal(io, "cannot open '{s}': {s}", .{ dir_path, describeError(err) });
     defer dir.close(io);
 
-    const groups = sweep.groupByExtension(allocator, io, dir) catch |err|
+    const groups = sweep.groupByExtension(allocator, io, dir, run.options) catch |err|
         fatal(io, "cannot read '{s}': {s}", .{ dir_path, describeError(err) });
 
     if (groups.len == 0) {
@@ -70,20 +72,28 @@ pub fn main(init: std.process.Init) !void {
 }
 
 const Command = union(enum) {
-    run: []const u8,
+    run: Run,
     help,
     version,
     unknown_option: []const u8,
     unexpected_argument: []const u8,
 };
 
+const Run = struct {
+    dir_path: []const u8,
+    options: sweep.Options = .{},
+};
+
 fn parseArgs(args: []const []const u8) Command {
     var dir_path: ?[]const u8 = null;
+    var options: sweep.Options = .{};
     var options_done = false;
     for (args) |arg| {
         if (!options_done and arg.len > 1 and arg[0] == '-') {
             if (std.mem.eql(u8, arg, "--")) {
                 options_done = true;
+            } else if (std.mem.eql(u8, arg, "-a") or std.mem.eql(u8, arg, "--all")) {
+                options.include_hidden = true;
             } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
                 return .help;
             } else if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
@@ -97,7 +107,7 @@ fn parseArgs(args: []const []const u8) Command {
             return .{ .unexpected_argument = arg };
         }
     }
-    return .{ .run = dir_path orelse "." };
+    return .{ .run = .{ .dir_path = dir_path orelse ".", .options = options } };
 }
 
 fn fatal(io: std.Io, comptime format: []const u8, args: anytype) noreturn {
@@ -139,7 +149,10 @@ fn expectCommand(expected: Command, args: []const []const u8) !void {
     const actual = parseArgs(args);
     try std.testing.expectEqual(std.meta.activeTag(expected), std.meta.activeTag(actual));
     switch (expected) {
-        .run => |path| try std.testing.expectEqualStrings(path, actual.run),
+        .run => |run| {
+            try std.testing.expectEqualStrings(run.dir_path, actual.run.dir_path);
+            try std.testing.expectEqual(run.options, actual.run.options);
+        },
         .unknown_option => |arg| try std.testing.expectEqualStrings(arg, actual.unknown_option),
         .unexpected_argument => |arg| try std.testing.expectEqualStrings(arg, actual.unexpected_argument),
         .help, .version => {},
@@ -147,12 +160,20 @@ fn expectCommand(expected: Command, args: []const []const u8) !void {
 }
 
 test "parseArgs defaults to the current directory" {
-    try expectCommand(.{ .run = "." }, &.{});
+    try expectCommand(.{ .run = .{ .dir_path = "." } }, &.{});
 }
 
 test "parseArgs takes a directory" {
-    try expectCommand(.{ .run = "src" }, &.{"src"});
-    try expectCommand(.{ .run = "-" }, &.{"-"});
+    try expectCommand(.{ .run = .{ .dir_path = "src" } }, &.{"src"});
+    try expectCommand(.{ .run = .{ .dir_path = "-" } }, &.{"-"});
+}
+
+test "parseArgs recognizes --all" {
+    const all: sweep.Options = .{ .include_hidden = true };
+    try expectCommand(.{ .run = .{ .dir_path = ".", .options = all } }, &.{"-a"});
+    try expectCommand(.{ .run = .{ .dir_path = "src", .options = all } }, &.{ "--all", "src" });
+    try expectCommand(.{ .run = .{ .dir_path = "src", .options = all } }, &.{ "src", "-a" });
+    try expectCommand(.{ .run = .{ .dir_path = "-a" } }, &.{ "--", "-a" });
 }
 
 test "parseArgs recognizes help and version" {
@@ -164,12 +185,12 @@ test "parseArgs recognizes help and version" {
 }
 
 test "parseArgs treats arguments after -- as directories" {
-    try expectCommand(.{ .run = "--help" }, &.{ "--", "--help" });
+    try expectCommand(.{ .run = .{ .dir_path = "--help" } }, &.{ "--", "--help" });
     try expectCommand(.{ .unexpected_argument = "b" }, &.{ "--", "a", "b" });
 }
 
 test "parseArgs rejects unknown options and extra arguments" {
     try expectCommand(.{ .unknown_option = "-x" }, &.{"-x"});
-    try expectCommand(.{ .unknown_option = "--all" }, &.{ "src", "--all" });
+    try expectCommand(.{ .unknown_option = "--bogus" }, &.{ "src", "--bogus" });
     try expectCommand(.{ .unexpected_argument = "b" }, &.{ "a", "b" });
 }
