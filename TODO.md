@@ -22,3 +22,7 @@
 - [x] **Document Zig Version**: `minimum_zig_version` is advisory and not enforced; state the required Zig version (0.17.0) in the README.
 - [x] **Include LICENSE in Package**: Uncomment `"LICENSE"` in `.paths` in `build.zig.zon` so the MIT notice ships when the package is fetched.
 - [ ] **Stable Zig Support**: Monitor the evolution of the experimental `std.process.Init` and `std.Io` APIs to ensure compatibility with future Zig releases.
+- [ ] **Continuous Integration**: Add a GitHub Actions workflow (there is no `.github/` yet) that, on every push and pull request:
+  - Runs the README's CI commands: `zig fmt --check .`, `zig build`, `zig build test`, and `zig build test --release=safe`.
+  - Tests on Linux, macOS and Windows. So far everything has only run on Linux; the symlink tests skip themselves on Windows.
+  - Runs a second job against the Zig nightly build that is allowed to fail, as an early warning for **Stable Zig Support** when `std.process.Init` or `std.Io` change.
