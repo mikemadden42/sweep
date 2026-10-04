@@ -22,20 +22,21 @@ pub const Options = struct {
 pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, options: Options) ![]Group {
     var extensions = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
 
+    var lower_buf: [std.Io.Dir.max_name_bytes]u8 = undefined;
+
     var iterator = dir.iterate();
     while (try iterator.next(io)) |entry| {
         const hidden = std.mem.startsWith(u8, entry.name, ".");
         if ((options.include_hidden or !hidden) and isFile(io, dir, entry)) {
-            const ext = std.fs.path.extension(entry.name);
-
-            const duped_ext = if (options.case_insensitive)
-                try std.ascii.allocLowerString(allocator, ext)
-            else
-                try allocator.dupe(u8, ext);
             const duped_name = try allocator.dupe(u8, entry.name);
+            // Points into `duped_name`, so it outlives this iteration without a copy.
+            const ext = std.fs.path.extension(duped_name);
+            const key = if (options.case_insensitive) std.ascii.lowerString(&lower_buf, ext) else ext;
 
-            const gop = try extensions.getOrPut(duped_ext);
+            const gop = try extensions.getOrPut(key);
             if (!gop.found_existing) {
+                // `lower_buf` is reused for the next entry, so a new lowercased key needs its own copy.
+                if (options.case_insensitive) gop.key_ptr.* = try allocator.dupe(u8, key);
                 gop.value_ptr.* = .empty;
             }
             try gop.value_ptr.append(allocator, duped_name);

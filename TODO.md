@@ -10,7 +10,7 @@
 - [x] **Argument Parsing**: Add support for standard flags like `--help` and `--version`.
 - [x] **Hidden Files Support**: Add a command-line flag (e.g., `-a` or `--all`) to include files starting with `.`.
 - [x] **Case-Insensitive Grouping**: Provide an option (or make it default) to group extensions like `.txt` and `.TXT` together.
-- [ ] **Memory Optimization**: Reduce redundant string allocations in the arena for repeated extensions.
+- [x] **Memory Optimization**: Reduce redundant string allocations in the arena for repeated extensions.
 - [ ] **Sorting Optimization**: Optimize the sorting process by sorting file lists during collection or more efficiently before output.
 - [x] **Graceful Error Handling**: Replace raw Zig error returns in `main` with user-friendly error messages. Include validation for invalid paths or cases where a file path is provided instead of a directory.
 
