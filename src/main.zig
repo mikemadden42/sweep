@@ -1,5 +1,18 @@
 const std = @import("std");
 const sweep = @import("sweep");
+const build_options = @import("build_options");
+
+const usage =
+    \\Usage: sweep [options] [directory]
+    \\
+    \\List the files in a directory, grouped by extension.
+    \\The directory defaults to the current one.
+    \\
+    \\Options:
+    \\  -h, --help     Show this help and exit
+    \\  -V, --version  Show the version and exit
+    \\
+;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
@@ -8,9 +21,26 @@ pub fn main(init: std.process.Init) !void {
     var buf: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writer(io, &buf);
 
-    var args = try init.minimal.args.iterateAllocator(allocator);
-    _ = args.skip();
-    const dir_path = args.next() orelse ".";
+    var args: std.ArrayList([]const u8) = .empty;
+    var arg_it = try init.minimal.args.iterateAllocator(allocator);
+    _ = arg_it.skip();
+    while (arg_it.next()) |arg| try args.append(allocator, arg);
+
+    const dir_path = switch (parseArgs(args.items)) {
+        .run => |path| path,
+        .help => {
+            try stdout.interface.writeAll(usage);
+            try stdout.interface.flush();
+            return;
+        },
+        .version => {
+            try stdout.interface.print("sweep {s}\n", .{build_options.version});
+            try stdout.interface.flush();
+            return;
+        },
+        .unknown_option => |arg| usageError(io, "unknown option '{s}'", .{arg}),
+        .unexpected_argument => |arg| usageError(io, "unexpected argument '{s}'", .{arg}),
+    };
 
     var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err|
         fatal(io, "cannot open '{s}': {s}", .{ dir_path, describeError(err) });
@@ -39,12 +69,51 @@ pub fn main(init: std.process.Init) !void {
     try stdout.interface.flush();
 }
 
+const Command = union(enum) {
+    run: []const u8,
+    help,
+    version,
+    unknown_option: []const u8,
+    unexpected_argument: []const u8,
+};
+
+fn parseArgs(args: []const []const u8) Command {
+    var dir_path: ?[]const u8 = null;
+    var options_done = false;
+    for (args) |arg| {
+        if (!options_done and arg.len > 1 and arg[0] == '-') {
+            if (std.mem.eql(u8, arg, "--")) {
+                options_done = true;
+            } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+                return .help;
+            } else if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
+                return .version;
+            } else {
+                return .{ .unknown_option = arg };
+            }
+        } else if (dir_path == null) {
+            dir_path = arg;
+        } else {
+            return .{ .unexpected_argument = arg };
+        }
+    }
+    return .{ .run = dir_path orelse "." };
+}
+
 fn fatal(io: std.Io, comptime format: []const u8, args: anytype) noreturn {
+    exitWithMessage(io, 1, format, args);
+}
+
+fn usageError(io: std.Io, comptime format: []const u8, args: anytype) noreturn {
+    exitWithMessage(io, 2, format ++ "\nTry 'sweep --help' for more information.", args);
+}
+
+fn exitWithMessage(io: std.Io, status: u8, comptime format: []const u8, args: anytype) noreturn {
     var buf: [1024]u8 = undefined;
     var stderr = std.Io.File.stderr().writer(io, &buf);
     stderr.interface.print("sweep: " ++ format ++ "\n", args) catch {};
     stderr.interface.flush() catch {};
-    std.process.exit(1);
+    std.process.exit(status);
 }
 
 fn describeError(err: anyerror) []const u8 {
@@ -64,4 +133,43 @@ test "describeError gives readable messages" {
     try std.testing.expectEqualStrings("not a directory", describeError(error.NotDir));
     try std.testing.expectEqualStrings("permission denied", describeError(error.AccessDenied));
     try std.testing.expectEqualStrings("SystemResources", describeError(error.SystemResources));
+}
+
+fn expectCommand(expected: Command, args: []const []const u8) !void {
+    const actual = parseArgs(args);
+    try std.testing.expectEqual(std.meta.activeTag(expected), std.meta.activeTag(actual));
+    switch (expected) {
+        .run => |path| try std.testing.expectEqualStrings(path, actual.run),
+        .unknown_option => |arg| try std.testing.expectEqualStrings(arg, actual.unknown_option),
+        .unexpected_argument => |arg| try std.testing.expectEqualStrings(arg, actual.unexpected_argument),
+        .help, .version => {},
+    }
+}
+
+test "parseArgs defaults to the current directory" {
+    try expectCommand(.{ .run = "." }, &.{});
+}
+
+test "parseArgs takes a directory" {
+    try expectCommand(.{ .run = "src" }, &.{"src"});
+    try expectCommand(.{ .run = "-" }, &.{"-"});
+}
+
+test "parseArgs recognizes help and version" {
+    try expectCommand(.help, &.{"-h"});
+    try expectCommand(.help, &.{"--help"});
+    try expectCommand(.version, &.{"-V"});
+    try expectCommand(.version, &.{"--version"});
+    try expectCommand(.help, &.{ "src", "--help" });
+}
+
+test "parseArgs treats arguments after -- as directories" {
+    try expectCommand(.{ .run = "--help" }, &.{ "--", "--help" });
+    try expectCommand(.{ .unexpected_argument = "b" }, &.{ "--", "a", "b" });
+}
+
+test "parseArgs rejects unknown options and extra arguments" {
+    try expectCommand(.{ .unknown_option = "-x" }, &.{"-x"});
+    try expectCommand(.{ .unknown_option = "--all" }, &.{ "src", "--all" });
+    try expectCommand(.{ .unexpected_argument = "b" }, &.{ "a", "b" });
 }

@@ -7,7 +7,7 @@
 - [x] **Fix Windows Build**: `zig build -Dtarget=x86_64-windows` fails on Zig 0.17 because `init.minimal.args.iterate()` is a compile error on Windows. Use `init.minimal.args.iterateAllocator(allocator)` in `src/main.zig`.
 
 ## Improvements
-- [ ] **Argument Parsing**: Add support for standard flags like `--help` and `--version`.
+- [x] **Argument Parsing**: Add support for standard flags like `--help` and `--version`.
 - [ ] **Hidden Files Support**: Add a command-line flag (e.g., `-a` or `--all`) to include files starting with `.`.
 - [ ] **Case-Insensitive Grouping**: Provide an option (or make it default) to group extensions like `.txt` and `.TXT` together.
 - [ ] **Memory Optimization**: Reduce redundant string allocations in the arena for repeated extensions.

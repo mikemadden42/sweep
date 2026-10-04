@@ -1,4 +1,5 @@
 const std = @import("std");
+const zon = @import("build.zig.zon");
 
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
@@ -83,6 +84,11 @@ pub fn build(b: *std.Build) void {
             .strip = optimize != .debug,
         }),
     });
+
+    // Expose the package version to the executable as `@import("build_options").version`.
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", zon.version);
+    exe.root_module.addOptions("build_options", options);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
