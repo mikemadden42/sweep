@@ -12,7 +12,7 @@ pub const Options = struct {
     /// Include files whose names start with ".".
     include_hidden: bool = false,
     /// Group extensions that differ only in ASCII case (".txt" and ".TXT")
-    /// under the lowercase extension.
+    /// under the lowercase extension, and sort file names ignoring ASCII case.
     case_insensitive: bool = false,
 };
 
@@ -48,7 +48,11 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
     var i: usize = 0;
     while (it.next()) |kv| : (i += 1) {
         const files = kv.value_ptr.items;
-        std.mem.sort([]const u8, files, {}, stringLessThan);
+        if (options.case_insensitive) {
+            std.mem.sort([]const u8, files, {}, stringLessThanIgnoreCase);
+        } else {
+            std.mem.sort([]const u8, files, {}, stringLessThan);
+        }
         groups[i] = .{ .ext = kv.key_ptr.*, .files = files };
     }
 
@@ -72,6 +76,16 @@ fn isFile(io: std.Io, dir: std.Io.Dir, entry: std.Io.Dir.Entry) bool {
 fn stringLessThan(context: void, a: []const u8, b: []const u8) bool {
     _ = context;
     return std.mem.lessThan(u8, a, b);
+}
+
+/// Orders names ignoring ASCII case, falling back to byte order so that
+/// names differing only in case ("a.txt", "A.txt") have a stable order.
+fn stringLessThanIgnoreCase(context: void, a: []const u8, b: []const u8) bool {
+    return switch (std.ascii.orderIgnoreCase(a, b)) {
+        .lt => true,
+        .gt => false,
+        .eq => stringLessThan(context, a, b),
+    };
 }
 
 fn groupLessThan(context: void, a: Group, b: Group) bool {
@@ -165,6 +179,34 @@ test "groups extensions case-insensitively when asked" {
     try expectGroups(&.{
         .{ .ext = ".md", .files = &.{"d.md"} },
         .{ .ext = ".txt", .files = &.{ "a.txt", "b.TXT", "c.Txt" } },
+    }, groups);
+}
+
+test "sorts file names case-insensitively when asked" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "Zebra.md", "apple.md", "Banana.md", "banana.MD" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{ .case_insensitive = true });
+    try expectGroups(&.{
+        .{ .ext = ".md", .files = &.{ "apple.md", "Banana.md", "banana.MD", "Zebra.md" } },
+    }, groups);
+}
+
+test "sorts file names by byte order by default" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "Zebra.md", "apple.md", "Banana.md" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
+    try expectGroups(&.{
+        .{ .ext = ".md", .files = &.{ "Banana.md", "Zebra.md", "apple.md" } },
     }, groups);
 }
 
