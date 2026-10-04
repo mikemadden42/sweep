@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const Group = struct {
     /// Extension including the leading dot (e.g. ".zig"), or "" for files without one.
@@ -15,7 +16,7 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
 
     var iterator = dir.iterate();
     while (try iterator.next(io)) |entry| {
-        if (entry.kind == .file and !std.mem.startsWith(u8, entry.name, ".")) {
+        if (!std.mem.startsWith(u8, entry.name, ".") and isFile(io, dir, entry)) {
             const ext = std.fs.path.extension(entry.name);
 
             const duped_ext = try allocator.dupe(u8, ext);
@@ -40,6 +41,19 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
 
     std.mem.sort(Group, groups, {}, groupLessThan);
     return groups;
+}
+
+/// Returns true for regular files and for symlinks that resolve to one.
+/// Broken, looping or unreadable symlinks are treated as not being files.
+fn isFile(io: std.Io, dir: std.Io.Dir, entry: std.Io.Dir.Entry) bool {
+    return switch (entry.kind) {
+        .file => true,
+        .sym_link => {
+            const stat = dir.statFile(io, entry.name, .{}) catch return false;
+            return stat.kind == .file;
+        },
+        else => false,
+    };
 }
 
 fn stringLessThan(context: void, a: []const u8, b: []const u8) bool {
@@ -153,5 +167,42 @@ test "skips directories" {
     const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
     try expectGroups(&.{
         .{ .ext = ".txt", .files = &.{"top.txt"} },
+    }, groups);
+}
+
+test "includes symlinks to files" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{"real.txt"});
+    try tmp.dir.symLink(testing.io, "real.txt", "link.txt", .{});
+    try tmp.dir.symLink(testing.io, "link.txt", "chained.txt", .{});
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".txt", .files = &.{ "chained.txt", "link.txt", "real.txt" } },
+    }, groups);
+}
+
+test "skips symlinks to directories and broken or looping symlinks" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try tmp.dir.createDirPath(testing.io, "subdir");
+    try tmp.dir.symLink(testing.io, "subdir", "dir_link.d", .{ .is_directory = true });
+    try tmp.dir.symLink(testing.io, "missing.txt", "broken.txt", .{});
+    try tmp.dir.symLink(testing.io, "loop_b.txt", "loop_a.txt", .{});
+    try tmp.dir.symLink(testing.io, "loop_a.txt", "loop_b.txt", .{});
+    try createFiles(tmp.dir, &.{"real.txt"});
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".txt", .files = &.{"real.txt"} },
     }, groups);
 }
