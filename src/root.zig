@@ -30,7 +30,7 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
         if ((options.include_hidden or !hidden) and isFile(io, dir, entry)) {
             const duped_name = try allocator.dupe(u8, entry.name);
             // Points into `duped_name`, so it outlives this iteration without a copy.
-            const ext = std.fs.path.extension(duped_name);
+            const ext = std.Io.Dir.path.extension(duped_name);
             const key = if (options.case_insensitive) std.ascii.lowerString(&lower_buf, ext) else ext;
 
             const gop = try extensions.getOrPut(key);
