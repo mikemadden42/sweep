@@ -3,7 +3,7 @@
 ## High Priority
 - [ ] **Fix Symlink Handling**: Currently, symlinks are ignored. Update logic to include symlinks that point to files.
 - [x] **Logic Refactoring**: Move core file scanning and grouping logic from `src/main.zig` to `src/root.zig`. This will enable proper unit testing.
-- [ ] **Add Unit Tests**: Implement test blocks in `src/root.zig` to verify grouping and sorting behavior.
+- [x] **Add Unit Tests**: Implement test blocks in `src/root.zig` to verify grouping and sorting behavior.
 - [x] **Fix Windows Build**: `zig build -Dtarget=x86_64-windows` fails on Zig 0.17 because `init.minimal.args.iterate()` is a compile error on Windows. Use `init.minimal.args.iterateAllocator(allocator)` in `src/main.zig`.
 
 ## Improvements

@@ -51,3 +51,107 @@ fn groupLessThan(context: void, a: Group, b: Group) bool {
     _ = context;
     return std.mem.lessThan(u8, a.ext, b.ext);
 }
+
+const testing = std.testing;
+
+fn createFiles(dir: std.Io.Dir, names: []const []const u8) !void {
+    for (names) |name| {
+        try dir.writeFile(testing.io, .{ .sub_path = name, .data = "" });
+    }
+}
+
+fn expectGroups(expected: []const Group, actual: []const Group) !void {
+    try testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |e, a| {
+        try testing.expectEqualStrings(e.ext, a.ext);
+        try testing.expectEqual(e.files.len, a.files.len);
+        for (e.files, a.files) |ef, af| {
+            try testing.expectEqualStrings(ef, af);
+        }
+    }
+}
+
+test "empty directory yields no groups" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try testing.expectEqual(0, groups.len);
+}
+
+test "groups files by extension, sorting groups and files" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "zeta.md", "b.zig", "Makefile", "alpha.md", "a.zig", "LICENSE" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = "", .files = &.{ "LICENSE", "Makefile" } },
+        .{ .ext = ".md", .files = &.{ "alpha.md", "zeta.md" } },
+        .{ .ext = ".zig", .files = &.{ "a.zig", "b.zig" } },
+    }, groups);
+}
+
+test "uses only the last extension" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "archive.tar.gz", "photo.gz" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".gz", .files = &.{ "archive.tar.gz", "photo.gz" } },
+    }, groups);
+}
+
+test "extensions are case-sensitive" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "a.txt", "b.TXT" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".TXT", .files = &.{"b.TXT"} },
+        .{ .ext = ".txt", .files = &.{"a.txt"} },
+    }, groups);
+}
+
+test "skips hidden files" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ ".gitignore", ".hidden.txt", "shown.txt" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".txt", .files = &.{"shown.txt"} },
+    }, groups);
+}
+
+test "skips directories" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try tmp.dir.createDirPath(testing.io, "subdir");
+    try tmp.dir.createDirPath(testing.io, "conf.d");
+    try createFiles(tmp.dir, &.{ "subdir/nested.txt", "top.txt" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir);
+    try expectGroups(&.{
+        .{ .ext = ".txt", .files = &.{"top.txt"} },
+    }, groups);
+}
