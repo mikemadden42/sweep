@@ -188,12 +188,23 @@ test "sorts file names case-insensitively when asked" {
     var tmp = testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
 
-    try createFiles(tmp.dir, &.{ "Zebra.md", "apple.md", "Banana.md", "banana.MD" });
+    // No two names differ only in case: they would collide on case-insensitive
+    // filesystems (macOS, Windows). That tie-break is tested on the comparator below.
+    try createFiles(tmp.dir, &.{ "Zebra.md", "apple.md", "Banana.md", "cherry.MD" });
 
     const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{ .case_insensitive = true });
     try expectGroups(&.{
-        .{ .ext = ".md", .files = &.{ "apple.md", "Banana.md", "banana.MD", "Zebra.md" } },
+        .{ .ext = ".md", .files = &.{ "apple.md", "Banana.md", "cherry.MD", "Zebra.md" } },
     }, groups);
+}
+
+test "case-insensitive sort orders names differing only in case by byte order" {
+    var names = [_][]const u8{ "banana.MD", "apple.md", "Banana.md", "banana.md" };
+    std.mem.sort([]const u8, &names, {}, stringLessThanIgnoreCase);
+    const expected = [_][]const u8{ "apple.md", "Banana.md", "banana.MD", "banana.md" };
+    for (expected, names) |e, a| {
+        try testing.expectEqualStrings(e, a);
+    }
 }
 
 test "sorts file names by byte order by default" {
