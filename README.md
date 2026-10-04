@@ -5,9 +5,10 @@ A command-line tool written in Zig that scans a directory and lists files groupe
 ```
 sweep [options] [directory]   # defaults to current directory if omitted
 
-  -a, --all      Include hidden files (names starting with ".")
-  -h, --help     Show help and exit
-  -V, --version  Show the version and exit
+  -a, --all          Include hidden files (names starting with ".")
+  -i, --ignore-case  Group extensions regardless of case (.txt and .TXT)
+  -h, --help         Show help and exit
+  -V, --version      Show the version and exit
 ```
 
 Exits with status 1 if the directory can't be read and 2 for invalid arguments.

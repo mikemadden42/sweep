@@ -9,9 +9,10 @@ const usage =
     \\The directory defaults to the current one.
     \\
     \\Options:
-    \\  -a, --all      Include hidden files (names starting with ".")
-    \\  -h, --help     Show this help and exit
-    \\  -V, --version  Show the version and exit
+    \\  -a, --all          Include hidden files (names starting with ".")
+    \\  -i, --ignore-case  Group extensions regardless of case (.txt and .TXT)
+    \\  -h, --help         Show this help and exit
+    \\  -V, --version      Show the version and exit
     \\
 ;
 
@@ -94,6 +95,8 @@ fn parseArgs(args: []const []const u8) Command {
                 options_done = true;
             } else if (std.mem.eql(u8, arg, "-a") or std.mem.eql(u8, arg, "--all")) {
                 options.include_hidden = true;
+            } else if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--ignore-case")) {
+                options.case_insensitive = true;
             } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
                 return .help;
             } else if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
@@ -174,6 +177,13 @@ test "parseArgs recognizes --all" {
     try expectCommand(.{ .run = .{ .dir_path = "src", .options = all } }, &.{ "--all", "src" });
     try expectCommand(.{ .run = .{ .dir_path = "src", .options = all } }, &.{ "src", "-a" });
     try expectCommand(.{ .run = .{ .dir_path = "-a" } }, &.{ "--", "-a" });
+}
+
+test "parseArgs recognizes --ignore-case" {
+    const ci: sweep.Options = .{ .case_insensitive = true };
+    try expectCommand(.{ .run = .{ .dir_path = ".", .options = ci } }, &.{"-i"});
+    try expectCommand(.{ .run = .{ .dir_path = "src", .options = ci } }, &.{ "src", "--ignore-case" });
+    try expectCommand(.{ .run = .{ .dir_path = ".", .options = .{ .include_hidden = true, .case_insensitive = true } } }, &.{ "-a", "-i" });
 }
 
 test "parseArgs recognizes help and version" {

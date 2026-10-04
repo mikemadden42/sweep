@@ -11,6 +11,9 @@ pub const Group = struct {
 pub const Options = struct {
     /// Include files whose names start with ".".
     include_hidden: bool = false,
+    /// Group extensions that differ only in ASCII case (".txt" and ".TXT")
+    /// under the lowercase extension.
+    case_insensitive: bool = false,
 };
 
 /// Groups the regular files in `dir` by extension.
@@ -25,7 +28,10 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
         if ((options.include_hidden or !hidden) and isFile(io, dir, entry)) {
             const ext = std.fs.path.extension(entry.name);
 
-            const duped_ext = try allocator.dupe(u8, ext);
+            const duped_ext = if (options.case_insensitive)
+                try std.ascii.allocLowerString(allocator, ext)
+            else
+                try allocator.dupe(u8, ext);
             const duped_name = try allocator.dupe(u8, entry.name);
 
             const gop = try extensions.getOrPut(duped_ext);
@@ -143,6 +149,21 @@ test "extensions are case-sensitive" {
     try expectGroups(&.{
         .{ .ext = ".TXT", .files = &.{"b.TXT"} },
         .{ .ext = ".txt", .files = &.{"a.txt"} },
+    }, groups);
+}
+
+test "groups extensions case-insensitively when asked" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "a.txt", "b.TXT", "c.Txt", "d.md" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{ .case_insensitive = true });
+    try expectGroups(&.{
+        .{ .ext = ".md", .files = &.{"d.md"} },
+        .{ .ext = ".txt", .files = &.{ "a.txt", "b.TXT", "c.Txt" } },
     }, groups);
 }
 
