@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,12 +18,38 @@ jobs:
       - uses: actions/checkout@v7
       # No version given: uses minimum_zig_version from build.zig.zon.
       - uses: mlugg/setup-zig@v2
+      # Formatting is platform-independent, so checking it once is enough.
       - name: Check formatting
         if: runner.os == 'Linux'
         run: zig fmt --check .
       - run: zig build
       - run: zig build test --summary all
       - run: zig build test --release=safe --summary all
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+      - name: Release modes
+        run: |
+          zig build --release=safe
+          zig build --release=fast
+          zig build --release=small
+      - name: Cross compile
+        run: |
+          for target in \
+            x86_64-linux aarch64-linux \
+            x86_64-windows aarch64-windows \
+            aarch64-macos x86_64-macos \
+            x86_64-freebsd; do
+            zig build -Dtarget="$target" --release=safe -p "zig-out/$target"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sweep
+          path: zig-out/*/bin/*
 
   zig-nightly:
     # Early warning for breaking changes to std.process.Init and std.Io.
