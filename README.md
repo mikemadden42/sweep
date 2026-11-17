@@ -11,7 +11,7 @@ sweep [options] [directory]   # defaults to current directory if omitted
   -V, --version      Show the version and exit
 ```
 
-Exits with status 1 if the directory can't be read and 2 for invalid arguments.
+Exits with status 1 if the directory can't be read or the output can't be written (silently, if the output pipe is closed, as with `sweep | head`), and 2 for invalid arguments.
 
 ## Requirements
 

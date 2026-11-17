@@ -30,16 +30,8 @@ pub fn main(init: std.process.Init) !void {
 
     const run = switch (parseArgs(args.items)) {
         .run => |run| run,
-        .help => {
-            try stdout.interface.writeAll(usage);
-            try stdout.interface.flush();
-            return;
-        },
-        .version => {
-            try stdout.interface.print("sweep {s}\n", .{build_options.version});
-            try stdout.interface.flush();
-            return;
-        },
+        .help => return finishOutput(io, &stdout, stdout.interface.writeAll(usage)),
+        .version => return finishOutput(io, &stdout, stdout.interface.print("sweep {s}\n", .{build_options.version})),
         .unknown_option => |arg| usageError(io, "unknown option '{s}'", .{arg}),
         .unexpected_argument => |arg| usageError(io, "unexpected argument '{s}'", .{arg}),
     };
@@ -52,24 +44,40 @@ pub fn main(init: std.process.Init) !void {
     const groups = sweep.groupByExtension(allocator, io, dir, run.options) catch |err|
         fatal(io, "cannot read '{s}': {s}", .{ dir_path, describeError(err) });
 
+    finishOutput(io, &stdout, printGroups(&stdout.interface, groups));
+}
+
+fn printGroups(w: *std.Io.Writer, groups: []const sweep.Group) std.Io.Writer.Error!void {
     if (groups.len == 0) {
-        try stdout.interface.print("No files found.\n", .{});
-        try stdout.interface.flush();
+        try w.print("No files found.\n", .{});
         return;
     }
 
     for (groups) |group| {
         const ext = group.ext;
         const display_ext = if (ext.len > 0 and ext[0] == '.') ext[1..] else ext;
-        try stdout.interface.print("{s}:\n", .{if (display_ext.len == 0) "No Extension" else display_ext});
+        try w.print("{s}:\n", .{if (display_ext.len == 0) "No Extension" else display_ext});
 
         for (group.files) |file| {
-            try stdout.interface.print("- {s}\n", .{file});
+            try w.print("- {s}\n", .{file});
         }
-        try stdout.interface.print("\n", .{});
+        try w.print("\n", .{});
     }
+}
 
-    try stdout.interface.flush();
+/// Flushes `stdout` after the writes in `result`, exiting with an error message if
+/// any of them failed. The writer only reports `error.WriteFailed`; the cause is in
+/// `stdout.err`.
+fn finishOutput(io: std.Io, stdout: *std.Io.File.Writer, result: std.Io.Writer.Error!void) void {
+    result catch writeFailed(io, stdout.err);
+    stdout.interface.flush() catch writeFailed(io, stdout.err);
+}
+
+fn writeFailed(io: std.Io, err: ?std.Io.File.Writer.Error) noreturn {
+    const cause: anyerror = err orelse error.WriteFailed;
+    // The reader went away (e.g. `sweep | head`); there is no one to tell.
+    if (cause == error.BrokenPipe) std.process.exit(1);
+    fatal(io, "cannot write output: {s}", .{describeError(cause)});
 }
 
 const Command = union(enum) {
@@ -137,6 +145,8 @@ fn describeError(err: anyerror) []const u8 {
         error.SymLinkLoop => "too many levels of symbolic links",
         error.NameTooLong => "path is too long",
         error.BadPathName => "invalid path name",
+        error.NoSpaceLeft => "no space left on device",
+        error.NotOpenForWriting => "not open for writing",
         else => @errorName(err),
     };
 }
@@ -145,7 +155,42 @@ test "describeError gives readable messages" {
     try std.testing.expectEqualStrings("no such file or directory", describeError(error.FileNotFound));
     try std.testing.expectEqualStrings("not a directory", describeError(error.NotDir));
     try std.testing.expectEqualStrings("permission denied", describeError(error.AccessDenied));
+    try std.testing.expectEqualStrings("no space left on device", describeError(error.NoSpaceLeft));
     try std.testing.expectEqualStrings("SystemResources", describeError(error.SystemResources));
+}
+
+test "printGroups lists each group with its files" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try printGroups(&out.writer, &.{
+        .{ .ext = "", .files = &.{"Makefile"} },
+        .{ .ext = ".zig", .files = &.{ "a.zig", "b.zig" } },
+    });
+    try std.testing.expectEqualStrings(
+        \\No Extension:
+        \\- Makefile
+        \\
+        \\zig:
+        \\- a.zig
+        \\- b.zig
+        \\
+        \\
+    , out.written());
+}
+
+test "printGroups reports an empty directory" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try printGroups(&out.writer, &.{});
+    try std.testing.expectEqualStrings("No files found.\n", out.written());
+}
+
+test "printGroups reports a full writer" {
+    var buf: [8]u8 = undefined;
+    var out: std.Io.Writer = .fixed(&buf);
+    try std.testing.expectError(error.WriteFailed, printGroups(&out, &.{
+        .{ .ext = ".zig", .files = &.{"a_long_name.zig"} },
+    }));
 }
 
 fn expectCommand(expected: Command, args: []const []const u8) !void {
