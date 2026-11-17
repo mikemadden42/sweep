@@ -59,10 +59,25 @@ fn printGroups(w: *std.Io.Writer, groups: []const sweep.Group) std.Io.Writer.Err
         try w.print("{s}:\n", .{if (display_ext.len == 0) "No Extension" else display_ext});
 
         for (group.files) |file| {
-            try w.print("- {s}\n", .{file});
+            try w.writeAll("- ");
+            try writeEscaped(w, file);
+            try w.writeByte('\n');
         }
         try w.print("\n", .{});
     }
+}
+
+/// Writes `name` with control characters as C-style escapes ("\n", "\x1b") and
+/// backslashes doubled, so each name stays on one line and reads back unambiguously.
+fn writeEscaped(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!void {
+    for (name) |c| switch (c) {
+        '\\' => try w.writeAll("\\\\"),
+        '\n' => try w.writeAll("\\n"),
+        '\t' => try w.writeAll("\\t"),
+        '\r' => try w.writeAll("\\r"),
+        0x00...0x08, 0x0b, 0x0c, 0x0e...0x1f, 0x7f => try w.print("\\x{x:0>2}", .{c}),
+        else => try w.writeByte(c),
+    };
 }
 
 /// Flushes `stdout` after the writes in `result`, exiting with an error message if
@@ -187,6 +202,39 @@ test "printGroups lists each group with its files" {
         \\
         \\
     , out.written());
+}
+
+test "printGroups escapes file names" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try printGroups(&out.writer, &.{
+        .{ .ext = ".txt", .files = &.{"two\nlines.txt"} },
+    });
+    try std.testing.expectEqualStrings("txt:\n- two\\nlines.txt\n\n", out.written());
+}
+
+fn expectEscaped(expected: []const u8, name: []const u8) !void {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try writeEscaped(&out.writer, name);
+    try std.testing.expectEqualStrings(expected, out.written());
+}
+
+test "writeEscaped leaves ordinary names alone" {
+    try expectEscaped("plain.txt", "plain.txt");
+    try expectEscaped("with spaces 'and' \"quotes\".txt", "with spaces 'and' \"quotes\".txt");
+    try expectEscaped("caf\u{e9}.txt", "caf\u{e9}.txt");
+    try expectEscaped("", "");
+}
+
+test "writeEscaped escapes control characters and backslashes" {
+    try expectEscaped("a\\nb", "a\nb");
+    try expectEscaped("a\\tb\\rc", "a\tb\rc");
+    try expectEscaped("\\x1b[31mred", "\x1b[31mred");
+    try expectEscaped("\\x00\\x7f\\x1f", "\x00\x7f\x1f");
+    try expectEscaped("back\\\\slash", "back\\slash");
+    // A literal backslash-n must not look like an escaped newline.
+    try expectEscaped("a\\\\nb", "a\\nb");
 }
 
 test "printGroups reports an empty directory" {
