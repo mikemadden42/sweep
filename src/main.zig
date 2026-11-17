@@ -101,16 +101,27 @@ fn parseArgs(args: []const []const u8) Command {
         if (!options_done and arg.len > 1 and arg[0] == '-') {
             if (std.mem.eql(u8, arg, "--")) {
                 options_done = true;
-            } else if (std.mem.eql(u8, arg, "-a") or std.mem.eql(u8, arg, "--all")) {
-                options.include_hidden = true;
-            } else if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--ignore-case")) {
-                options.case_insensitive = true;
-            } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-                return .help;
-            } else if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
-                return .version;
+            } else if (std.mem.startsWith(u8, arg, "--")) {
+                if (std.mem.eql(u8, arg, "--all")) {
+                    options.include_hidden = true;
+                } else if (std.mem.eql(u8, arg, "--ignore-case")) {
+                    options.case_insensitive = true;
+                } else if (std.mem.eql(u8, arg, "--help")) {
+                    return .help;
+                } else if (std.mem.eql(u8, arg, "--version")) {
+                    return .version;
+                } else {
+                    return .{ .unknown_option = arg };
+                }
             } else {
-                return .{ .unknown_option = arg };
+                // Short flags can be combined: "-ai" is "-a -i".
+                for (arg[1..]) |flag| switch (flag) {
+                    'a' => options.include_hidden = true,
+                    'i' => options.case_insensitive = true,
+                    'h' => return .help,
+                    'V' => return .version,
+                    else => return .{ .unknown_option = arg },
+                };
             }
         } else if (dir_path == null) {
             dir_path = arg;
@@ -229,6 +240,23 @@ test "parseArgs recognizes --ignore-case" {
     try expectCommand(.{ .run = .{ .dir_path = ".", .options = ci } }, &.{"-i"});
     try expectCommand(.{ .run = .{ .dir_path = "src", .options = ci } }, &.{ "src", "--ignore-case" });
     try expectCommand(.{ .run = .{ .dir_path = ".", .options = .{ .include_hidden = true, .case_insensitive = true } } }, &.{ "-a", "-i" });
+}
+
+test "parseArgs accepts combined short flags" {
+    const both: sweep.Options = .{ .include_hidden = true, .case_insensitive = true };
+    try expectCommand(.{ .run = .{ .dir_path = ".", .options = both } }, &.{"-ai"});
+    try expectCommand(.{ .run = .{ .dir_path = "src", .options = both } }, &.{ "-ia", "src" });
+    try expectCommand(.{ .run = .{ .dir_path = ".", .options = .{ .include_hidden = true } } }, &.{"-aa"});
+    try expectCommand(.help, &.{"-ah"});
+    try expectCommand(.version, &.{"-iV"});
+    try expectCommand(.{ .unknown_option = "-ax" }, &.{"-ax"});
+    try expectCommand(.{ .run = .{ .dir_path = "-ai" } }, &.{ "--", "-ai" });
+}
+
+test "parseArgs requires long options to match exactly" {
+    try expectCommand(.{ .unknown_option = "--al" }, &.{"--al"});
+    try expectCommand(.{ .unknown_option = "--a" }, &.{"--a"});
+    try expectCommand(.{ .unknown_option = "--alli" }, &.{"--alli"});
 }
 
 test "parseArgs recognizes help and version" {
