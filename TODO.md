@@ -14,7 +14,7 @@
 - [x] **Memory Optimization**: Reduce redundant string allocations in the arena for repeated extensions.
 - [x] **Sorting Optimization**: ~~Optimize the sorting process by sorting file lists during collection or more efficiently before output.~~ Won't do: each group is sorted once after collection (O(n log n) overall), and keeping lists sorted during collection would cost O(n) per insert.
 - [x] **Graceful Error Handling**: Replace raw Zig error returns in `main` with user-friendly error messages. Include validation for invalid paths or cases where a file path is provided instead of a directory.
-- [ ] **Combined Short Flags**: Accept `-ai` as `-a -i`. `parseArgs` currently rejects it as an unknown option.
+- [x] **Combined Short Flags**: Accept `-ai` as `-a -i`. `parseArgs` currently rejects it as an unknown option.
 - [x] **Stdout Write Errors**: The `try` on stdout writes in `main` still lets `error.WriteFailed` escape (e.g. `sweep > /dev/full`). Report it with a `sweep:` message like other errors, and exit quietly on a broken pipe.
 - [ ] **Escape File Names**: Names containing newlines or control characters are printed raw. Quote or escape them, as `ls` does, so each name stays on one line.
 - [ ] **Non-ASCII Case Folding**: `-i` folds ASCII case only, so `.ÄBC` and `.äbc` stay separate. Either document "ASCII case" in the README and `--help`, or fold Unicode case.
