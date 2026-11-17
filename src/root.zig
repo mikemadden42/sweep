@@ -30,7 +30,9 @@ pub fn groupByExtension(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Di
         if ((options.include_hidden or !hidden) and isFile(io, dir, entry)) {
             const duped_name = try allocator.dupe(u8, entry.name);
             // Points into `duped_name`, so it outlives this iteration without a copy.
-            const ext = std.Io.Dir.path.extension(duped_name);
+            // A trailing dot ("foo.") yields ".", which counts as no extension.
+            const raw_ext = std.Io.Dir.path.extension(duped_name);
+            const ext = if (std.mem.eql(u8, raw_ext, ".")) "" else raw_ext;
             const key = if (options.case_insensitive) std.ascii.lowerString(&lower_buf, ext) else ext;
 
             const gop = try extensions.getOrPut(key);
@@ -149,6 +151,23 @@ test "uses only the last extension" {
     const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
     try expectGroups(&.{
         .{ .ext = ".gz", .files = &.{ "archive.tar.gz", "photo.gz" } },
+    }, groups);
+}
+
+test "names ending in a dot have no extension" {
+    // Windows strips trailing dots from file names, so "foo." can't be created there.
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    try createFiles(tmp.dir, &.{ "foo.", "bar", "a.txt" });
+
+    const groups = try groupByExtension(arena.allocator(), testing.io, tmp.dir, .{});
+    try expectGroups(&.{
+        .{ .ext = "", .files = &.{ "bar", "foo." } },
+        .{ .ext = ".txt", .files = &.{"a.txt"} },
     }, groups);
 }
 
