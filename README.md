@@ -6,12 +6,17 @@ A command-line tool written in Zig that scans a directory and lists files groupe
 sweep [options] [directory]   # defaults to current directory if omitted
 
   -a, --all          Include hidden files (names starting with ".")
-  -i, --ignore-case  Ignore case when grouping extensions and sorting names
+  -i, --ignore-case  Ignore ASCII case when grouping extensions and sorting names
   -h, --help         Show help and exit
   -V, --version      Show the version and exit
 ```
 
 File names are printed one per line. Control characters are shown as C-style escapes (`\n`, `\t`, `\x1b`) and backslashes are doubled, so a name with a newline in it can't pass for two names.
+
+Limitations:
+
+- `-i` folds ASCII letters only, so `.ÄBC` and `.äbc` are still separate groups.
+- A file is hidden only if its name starts with `.`, on every platform. The Windows hidden attribute is ignored, so those files are always listed.
 
 Exits with status 1 if the directory can't be read or the output can't be written (silently, if the output pipe is closed, as with `sweep | head`), and 2 for invalid arguments.
 
