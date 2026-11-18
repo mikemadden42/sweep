@@ -32,6 +32,6 @@
   - Runs the README's CI commands: `zig fmt --check .`, `zig build`, `zig build test`, and `zig build test --release=safe`.
   - Tests on Linux, macOS and Windows. So far everything has only run on Linux; the symlink tests skip themselves on Windows.
   - Runs a second job against the Zig nightly build that is allowed to fail, as an early warning for **Stable Zig Support** when `std.process.Init` or `std.Io` change.
-- [ ] **Trim build.zig Comments**: Most of `build.zig` is the `zig init` template commentary (including its typos "business business" and "releative"). Cut it down so the project's own choices stand out: the strip option, the unstripped test module, and `build_options`.
-- [ ] **Update CI Actions**: `actions/upload-artifact@v4` sits next to `actions/checkout@v7`; check for a newer release. Mirror any change in tidyhome, whose workflow is kept identical.
-- [ ] **ReleaseSafe on Nightly**: The `zig-nightly` job runs only debug tests. Add `zig build test --release=safe` to catch more std changes early.
+- [x] **Trim build.zig Comments**: Most of `build.zig` is the `zig init` template commentary (including its typos "business business" and "releative"). Cut it down so the project's own choices stand out: the strip option, the unstripped test module, and `build_options`.
+- [x] **Update CI Actions**: Bumped `actions/upload-artifact` from v4 to v7; `actions/checkout@v7` and `mlugg/setup-zig@v2` were already current. tidyhome still needs the same change to keep the workflows identical.
+- [x] **ReleaseSafe on Nightly**: The `zig-nightly` job runs only debug tests. Add `zig build test --release=safe` to catch more std changes early.
