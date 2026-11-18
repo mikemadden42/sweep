@@ -17,8 +17,8 @@
 - [x] **Combined Short Flags**: Accept `-ai` as `-a -i`. `parseArgs` currently rejects it as an unknown option.
 - [x] **Stdout Write Errors**: The `try` on stdout writes in `main` still lets `error.WriteFailed` escape (e.g. `sweep > /dev/full`). Report it with a `sweep:` message like other errors, and exit quietly on a broken pipe.
 - [x] **Escape File Names**: Names containing newlines or control characters are printed raw. Quote or escape them, as `ls` does, so each name stays on one line.
-- [ ] **Non-ASCII Case Folding**: `-i` folds ASCII case only, so `.ÄBC` and `.äbc` stay separate. Either document "ASCII case" in the README and `--help`, or fold Unicode case.
-- [ ] **Windows Hidden Attribute**: Only names starting with `.` count as hidden, so files with the Windows hidden attribute are always listed. Respect the attribute, or document the limitation.
+- [x] **Non-ASCII Case Folding**: `-i` folds ASCII case only, so `.ÄBC` and `.äbc` stay separate. Documented as ASCII-only in the README and `--help`; Zig's std has no Unicode case tables.
+- [x] **Windows Hidden Attribute**: Only names starting with `.` count as hidden, so files with the Windows hidden attribute are always listed. Documented in the README as a limitation.
 
 ## Maintenance
 - [x] **Ghost Dependency**: Either use the `@import("sweep")` in `main.zig` after refactoring or remove the unused module import from `build.zig`.

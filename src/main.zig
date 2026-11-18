@@ -10,7 +10,7 @@ const usage =
     \\
     \\Options:
     \\  -a, --all          Include hidden files (names starting with ".")
-    \\  -i, --ignore-case  Ignore case when grouping extensions and sorting names
+    \\  -i, --ignore-case  Ignore ASCII case when grouping extensions and sorting names
     \\  -h, --help         Show this help and exit
     \\  -V, --version      Show the version and exit
     \\
