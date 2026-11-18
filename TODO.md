@@ -16,7 +16,7 @@
 - [x] **Graceful Error Handling**: Replace raw Zig error returns in `main` with user-friendly error messages. Include validation for invalid paths or cases where a file path is provided instead of a directory.
 - [x] **Combined Short Flags**: Accept `-ai` as `-a -i`. `parseArgs` currently rejects it as an unknown option.
 - [x] **Stdout Write Errors**: The `try` on stdout writes in `main` still lets `error.WriteFailed` escape (e.g. `sweep > /dev/full`). Report it with a `sweep:` message like other errors, and exit quietly on a broken pipe.
-- [ ] **Escape File Names**: Names containing newlines or control characters are printed raw. Quote or escape them, as `ls` does, so each name stays on one line.
+- [x] **Escape File Names**: Names containing newlines or control characters are printed raw. Quote or escape them, as `ls` does, so each name stays on one line.
 - [ ] **Non-ASCII Case Folding**: `-i` folds ASCII case only, so `.ÄBC` and `.äbc` stay separate. Either document "ASCII case" in the README and `--help`, or fold Unicode case.
 - [ ] **Windows Hidden Attribute**: Only names starting with `.` count as hidden, so files with the Windows hidden attribute are always listed. Respect the attribute, or document the limitation.
 

@@ -11,6 +11,8 @@ sweep [options] [directory]   # defaults to current directory if omitted
   -V, --version      Show the version and exit
 ```
 
+File names are printed one per line. Control characters are shown as C-style escapes (`\n`, `\t`, `\x1b`) and backslashes are doubled, so a name with a newline in it can't pass for two names.
+
 Exits with status 1 if the directory can't be read or the output can't be written (silently, if the output pipe is closed, as with `sweep | head`), and 2 for invalid arguments.
 
 ## Requirements
